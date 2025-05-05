@@ -1,52 +1,67 @@
 
-import axios from 'axios';
-
 // Базовый URL для API
 const API_BASE_URL = 'https://api.chistota-service.ru/api/v1';
 
-// Создаем инстанс axios с базовым URL и заголовками
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
+// Базовая функция для выполнения запросов
+async function fetchWithAuth(url: string, options: RequestInit = {}) {
+  // Добавляем базовый URL
+  const fullUrl = `${API_BASE_URL}${url}`;
+  
+  // Получаем токен из localStorage
+  const token = localStorage.getItem('auth_token');
+  
+  // Настраиваем заголовки
+  const headers = {
     'Content-Type': 'application/json',
-  },
-});
-
-// Добавляем интерцептор для добавления токена авторизации
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Интерцептор для обработки ошибок
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Обработка ошибки 401 (Unauthorized)
-    if (error.response && error.response.status === 401) {
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...options.headers
+  };
+  
+  // Выполняем запрос
+  try {
+    const response = await fetch(fullUrl, {
+      ...options,
+      headers
+    });
+    
+    // Проверяем статус ответа
+    if (response.status === 401) {
       // Очищаем локальное хранилище и перенаправляем на страницу входа
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_data');
       window.location.href = '/admin/login';
+      throw new Error('Unauthorized');
     }
     
-    return Promise.reject(error);
+    // Если статус не 2xx, выбрасываем ошибку
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    
+    // Проверяем, есть ли контент для парсинга
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return await response.json();
+    }
+    
+    return await response.text();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
   }
-);
+}
 
 // Сервис для работы с авторизацией
 export const authService = {
   // Авторизация пользователя
   login: async (email: string, password: string) => {
     try {
-      const response = await apiClient.post('/auth/login', { email, password });
-      const { token, user } = response.data;
+      const data = await fetchWithAuth('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      
+      const { token, user } = data;
       
       // Сохраняем токен и данные пользователя в localStorage
       localStorage.setItem('auth_token', token);
@@ -61,7 +76,7 @@ export const authService = {
   // Выход пользователя
   logout: async () => {
     try {
-      await apiClient.post('/auth/logout');
+      await fetchWithAuth('/auth/logout', { method: 'POST' });
       // Очищаем локальное хранилище
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_data');
@@ -97,8 +112,7 @@ export const servicesService = {
   // Получение списка всех услуг
   getAllServices: async () => {
     try {
-      const response = await apiClient.get('/services');
-      return response.data;
+      return await fetchWithAuth('/services');
     } catch (error) {
       throw error;
     }
@@ -107,8 +121,7 @@ export const servicesService = {
   // Получение конкретной услуги по ID
   getServiceById: async (id: number) => {
     try {
-      const response = await apiClient.get(`/services/${id}`);
-      return response.data;
+      return await fetchWithAuth(`/services/${id}`);
     } catch (error) {
       throw error;
     }
@@ -117,8 +130,10 @@ export const servicesService = {
   // Создание новой услуги
   createService: async (serviceData: any) => {
     try {
-      const response = await apiClient.post('/services', serviceData);
-      return response.data;
+      return await fetchWithAuth('/services', {
+        method: 'POST',
+        body: JSON.stringify(serviceData)
+      });
     } catch (error) {
       throw error;
     }
@@ -127,8 +142,10 @@ export const servicesService = {
   // Обновление существующей услуги
   updateService: async (id: number, serviceData: any) => {
     try {
-      const response = await apiClient.put(`/services/${id}`, serviceData);
-      return response.data;
+      return await fetchWithAuth(`/services/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(serviceData)
+      });
     } catch (error) {
       throw error;
     }
@@ -137,8 +154,9 @@ export const servicesService = {
   // Удаление услуги
   deleteService: async (id: number) => {
     try {
-      const response = await apiClient.delete(`/services/${id}`);
-      return response.data;
+      return await fetchWithAuth(`/services/${id}`, {
+        method: 'DELETE'
+      });
     } catch (error) {
       throw error;
     }
@@ -150,8 +168,13 @@ export const bookingsService = {
   // Получение всех бронирований
   getAllBookings: async (filters = {}) => {
     try {
-      const response = await apiClient.get('/bookings', { params: filters });
-      return response.data;
+      const queryParams = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        queryParams.append(key, String(value));
+      });
+      
+      const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      return await fetchWithAuth(`/bookings${query}`);
     } catch (error) {
       throw error;
     }
@@ -160,8 +183,7 @@ export const bookingsService = {
   // Получение бронирования по ID
   getBookingById: async (id: number) => {
     try {
-      const response = await apiClient.get(`/bookings/${id}`);
-      return response.data;
+      return await fetchWithAuth(`/bookings/${id}`);
     } catch (error) {
       throw error;
     }
@@ -170,8 +192,10 @@ export const bookingsService = {
   // Создание нового бронирования
   createBooking: async (bookingData: any) => {
     try {
-      const response = await apiClient.post('/bookings', bookingData);
-      return response.data;
+      return await fetchWithAuth('/bookings', {
+        method: 'POST',
+        body: JSON.stringify(bookingData)
+      });
     } catch (error) {
       throw error;
     }
@@ -180,8 +204,10 @@ export const bookingsService = {
   // Обновление статуса бронирования
   updateBookingStatus: async (id: number, status: string) => {
     try {
-      const response = await apiClient.patch(`/bookings/${id}/status`, { status });
-      return response.data;
+      return await fetchWithAuth(`/bookings/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status })
+      });
     } catch (error) {
       throw error;
     }
@@ -190,8 +216,10 @@ export const bookingsService = {
   // Отмена бронирования
   cancelBooking: async (id: number, reason?: string) => {
     try {
-      const response = await apiClient.post(`/bookings/${id}/cancel`, { reason });
-      return response.data;
+      return await fetchWithAuth(`/bookings/${id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      });
     } catch (error) {
       throw error;
     }
@@ -203,8 +231,13 @@ export const clientsService = {
   // Получение списка всех клиентов
   getAllClients: async (filters = {}) => {
     try {
-      const response = await apiClient.get('/clients', { params: filters });
-      return response.data;
+      const queryParams = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        queryParams.append(key, String(value));
+      });
+      
+      const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      return await fetchWithAuth(`/clients${query}`);
     } catch (error) {
       throw error;
     }
@@ -213,8 +246,7 @@ export const clientsService = {
   // Получение клиента по ID
   getClientById: async (id: number) => {
     try {
-      const response = await apiClient.get(`/clients/${id}`);
-      return response.data;
+      return await fetchWithAuth(`/clients/${id}`);
     } catch (error) {
       throw error;
     }
@@ -223,8 +255,10 @@ export const clientsService = {
   // Создание нового клиента
   createClient: async (clientData: any) => {
     try {
-      const response = await apiClient.post('/clients', clientData);
-      return response.data;
+      return await fetchWithAuth('/clients', {
+        method: 'POST',
+        body: JSON.stringify(clientData)
+      });
     } catch (error) {
       throw error;
     }
@@ -233,8 +267,10 @@ export const clientsService = {
   // Обновление данных клиента
   updateClient: async (id: number, clientData: any) => {
     try {
-      const response = await apiClient.put(`/clients/${id}`, clientData);
-      return response.data;
+      return await fetchWithAuth(`/clients/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(clientData)
+      });
     } catch (error) {
       throw error;
     }
@@ -243,8 +279,7 @@ export const clientsService = {
   // Получение истории заказов клиента
   getClientBookings: async (id: number) => {
     try {
-      const response = await apiClient.get(`/clients/${id}/bookings`);
-      return response.data;
+      return await fetchWithAuth(`/clients/${id}/bookings`);
     } catch (error) {
       throw error;
     }
@@ -256,8 +291,7 @@ export const statsService = {
   // Получение общей статистики
   getDashboardStats: async () => {
     try {
-      const response = await apiClient.get('/stats/dashboard');
-      return response.data;
+      return await fetchWithAuth('/stats/dashboard');
     } catch (error) {
       throw error;
     }
@@ -266,10 +300,7 @@ export const statsService = {
   // Получение статистики по периоду
   getStatsByPeriod: async (startDate: string, endDate: string) => {
     try {
-      const response = await apiClient.get('/stats/period', {
-        params: { start_date: startDate, end_date: endDate }
-      });
-      return response.data;
+      return await fetchWithAuth(`/stats/period?start_date=${startDate}&end_date=${endDate}`);
     } catch (error) {
       throw error;
     }
@@ -278,12 +309,35 @@ export const statsService = {
   // Получение статистики по услугам
   getServiceStats: async () => {
     try {
-      const response = await apiClient.get('/stats/services');
-      return response.data;
+      return await fetchWithAuth('/stats/services');
     } catch (error) {
       throw error;
     }
   },
+};
+
+// Пример использования моков для разработки без реального API
+export const useMockData = process.env.NODE_ENV === 'development';
+
+// Экспорт стандартных функций для запросов (аналог axios)
+export const apiClient = {
+  get: (url: string, options = {}) => fetchWithAuth(url, { method: 'GET', ...options }),
+  post: (url: string, data: any, options = {}) => fetchWithAuth(url, { 
+    method: 'POST', 
+    body: JSON.stringify(data),
+    ...options 
+  }),
+  put: (url: string, data: any, options = {}) => fetchWithAuth(url, { 
+    method: 'PUT', 
+    body: JSON.stringify(data),
+    ...options 
+  }),
+  patch: (url: string, data: any, options = {}) => fetchWithAuth(url, { 
+    method: 'PATCH', 
+    body: JSON.stringify(data),
+    ...options 
+  }),
+  delete: (url: string, options = {}) => fetchWithAuth(url, { method: 'DELETE', ...options }),
 };
 
 export default apiClient;
