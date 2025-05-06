@@ -16,6 +16,15 @@ import AdminLayout from "./components/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminServices from "./pages/admin/AdminServices";
 
+// Auth & Account pages
+import Login from "./pages/auth/Login";
+import Register from "./pages/auth/Register";
+import AccountLayout from "./pages/account/Account";
+import Profile from "./pages/account/Profile";
+import Orders from "./pages/account/Orders";
+import Bookings from "./pages/account/Bookings";
+import Settings from "./pages/account/Settings";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -32,15 +41,27 @@ const App = () => (
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/cart" element={<Cart />} />
-          
+           
+          {/* Авторизация */}
+          <Route path="/auth/login" element={<Login />} />
+          <Route path="/auth/register" element={<Register />} />
+           
+          {/* Личный кабинет */}
+          <Route path="/account" element={<AccountLayout />}> 
+            <Route index element={<Profile />} />
+            <Route path="orders" element={<Orders />} />
+            <Route path="bookings" element={<Bookings />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+           
           {/* Админ-панель */}
           <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/admin" element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminLayout />}> 
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="services" element={<AdminServices />} />
             <Route index element={<AdminDashboard />} />
           </Route>
-          
+           
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
